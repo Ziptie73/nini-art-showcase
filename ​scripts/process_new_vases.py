@@ -6,7 +6,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
 def main():
-    print("Starting Nini's Paint Pour Creations download sync...")
+    print("Starting Nini's Paint Pour Creations sync...")
     
     sa_key_json = os.environ.get("GCP_SA_KEY")
     if not sa_key_json:
@@ -30,48 +30,46 @@ def main():
         ).execute()
         
         items = results.get('files', [])
-        
         if not items:
             print("No images found in Drive.")
             return
 
-        new_downloads = []
-
+        # 1. Download missing images
         for item in items:
             file_id = item['id']
             file_name = item['name'].replace(" ", "_").strip()
             
-            if os.path.exists(file_name):
-                continue
-                
-            print(f"Downloading {file_name}...")
-            request = service.files().get_media(fileId=file_id)
-            fh = io.FileIO(file_name, 'wb')
-            downloader = MediaIoBaseDownload(fh, request)
-            done = False
-            while done is False:
-                status, done = downloader.next_chunk()
-                
-            new_downloads.append(file_name)
+            if not os.path.exists(file_name):
+                print(f"Downloading {file_name}...")
+                request = service.files().get_media(fileId=file_id)
+                fh = io.FileIO(file_name, 'wb')
+                downloader = MediaIoBaseDownload(fh, request)
+                done = False
+                while done is False:
+                    status, done = downloader.next_chunk()
 
-        # Auto-update HTML with new vase images and flowers specification
-        if new_downloads:
-            print(f"Updating index.html with {len(new_downloads)} new images...")
-            if os.path.exists("index.html"):
-                with open("index.html", "r", encoding="utf-8") as f:
-                    html_content = f.read()
-                
-                new_html_blocks = ""
-                for img in new_downloads:
-                    new_html_blocks += f'\n    <div class="product-card">\n      <img src="{img}" alt="Nini\'s Paint Pour vase with flowers">\n    </div>'
-                
+        # 2. Update HTML for ANY image not already in the file
+        if os.path.exists("index.html"):
+            with open("index.html", "r", encoding="utf-8") as f:
+                html_content = f.read()
+            
+            new_html_blocks = ""
+            for item in items:
+                file_name = item['name'].replace(" ", "_").strip()
+                # Check if this specific image is missing from the website code
+                if file_name not in html_content:
+                    new_html_blocks += f'\n    <div class="product-card">\n      <img src="{file_name}" alt="Nini\'s Paint Pour vase with flowers">\n    </div>'
+            
+            if new_html_blocks:
+                print("Adding new images to index.html...")
                 updated_html = html_content.replace("</body>", f"{new_html_blocks}\n</body>")
-                
                 with open("index.html", "w", encoding="utf-8") as f:
                     f.write(updated_html)
                 print("Website HTML updated successfully!")
             else:
-                print("Could not find index.html to update.")
+                print("All images are already in the HTML. Nothing to update.")
+        else:
+            print("Could not find index.html to update.")
 
         print("Sync complete!")
 
