@@ -26,7 +26,7 @@ def main():
         
         # Placeholder for future folder scan and website update logic
         results = service.files().list(
-            pageSize=10, fields="files(id, name, mimeType)"
+            pageSize=1000, fields="files(id, name, mimeType)"
         ).execute()
         files = results.get('files', [])
         
