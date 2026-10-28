@@ -23,7 +23,6 @@ def main():
         service = build('drive', 'v3', credentials=creds)
         print("Successfully authenticated with Google Cloud and Drive API!")
 
-        # Retrieve only image files
         results = service.files().list(
             q="mimeType contains 'image/'",
             pageSize=1000,
@@ -36,16 +35,13 @@ def main():
             print("No images found in Drive.")
             return
 
-        print(f"Found {len(items)} images visible to the service account. Starting download...")
+        new_downloads = []
 
         for item in items:
             file_id = item['id']
-            # Clean up potential tablet naming glitches
             file_name = item['name'].replace(" ", "_").strip()
             
-            # Skip if we already have it in the repository
             if os.path.exists(file_name):
-                print(f"Skipping {file_name}, already exists in repository.")
                 continue
                 
             print(f"Downloading {file_name}...")
@@ -55,6 +51,27 @@ def main():
             done = False
             while done is False:
                 status, done = downloader.next_chunk()
+                
+            new_downloads.append(file_name)
+
+        # Auto-update HTML with new vase images and flowers specification
+        if new_downloads:
+            print(f"Updating index.html with {len(new_downloads)} new images...")
+            if os.path.exists("index.html"):
+                with open("index.html", "r", encoding="utf-8") as f:
+                    html_content = f.read()
+                
+                new_html_blocks = ""
+                for img in new_downloads:
+                    new_html_blocks += f'\n    <div class="product-card">\n      <img src="{img}" alt="Nini\'s Paint Pour vase with flowers">\n    </div>'
+                
+                updated_html = html_content.replace("</body>", f"{new_html_blocks}\n</body>")
+                
+                with open("index.html", "w", encoding="utf-8") as f:
+                    f.write(updated_html)
+                print("Website HTML updated successfully!")
+            else:
+                print("Could not find index.html to update.")
 
         print("Sync complete!")
 
