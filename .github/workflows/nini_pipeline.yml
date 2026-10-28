@@ -23,6 +23,8 @@ jobs:
       - name: Run Pipeline Script
         env:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
-        run: python scripts/*.py
-        
+        run: |
+          ls -R
+             python scripts/process_new_vases.py
+      
         
