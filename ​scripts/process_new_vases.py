@@ -6,7 +6,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
 def main():
-    print("Starting Nini's Paint Pour Creations sync...")
+    print("Starting Nini's Paint Pour Creations sync for photos and videos...")
     
     sa_key_json = os.environ.get("GCP_SA_KEY")
     if not sa_key_json:
@@ -23,18 +23,19 @@ def main():
         service = build('drive', 'v3', credentials=creds)
         print("Successfully authenticated with Google Cloud and Drive API!")
 
+        # 1. Look for BOTH images and videos
         results = service.files().list(
-            q="mimeType contains 'image/'",
+            q="mimeType contains 'image/' or mimeType contains 'video/'",
             pageSize=1000,
-            fields="files(id, name)"
+            fields="files(id, name, mimeType)"
         ).execute()
         
         items = results.get('files', [])
         if not items:
-            print("No images found in Drive.")
+            print("No media found in Drive.")
             return
 
-        # 1. Download missing images
+        # 2. Download missing media
         for item in items:
             file_id = item['id']
             file_name = item['name'].replace(" ", "_").strip()
@@ -48,7 +49,7 @@ def main():
                 while done is False:
                     status, done = downloader.next_chunk()
 
-        # 2. Update HTML for ANY image not already in the file
+        # 3. Update HTML with strict image-wrapper formatting
         if os.path.exists("index.html"):
             with open("index.html", "r", encoding="utf-8") as f:
                 html_content = f.read()
@@ -56,18 +57,39 @@ def main():
             new_html_blocks = ""
             for item in items:
                 file_name = item['name'].replace(" ", "_").strip()
-                # Check if this specific image is missing from the website code
+                mime_type = item.get('mimeType', '')
+                
                 if file_name not in html_content:
-                    new_html_blocks += f'\n    <div class="product-card">\n      <img src="{file_name}" alt="Nini\'s Paint Pour vase with flowers">\n    </div>'
+                    # Choose video player or image tag
+                    if 'video' in mime_type or file_name.lower().endswith(('.mp4', '.mov', '.webm')):
+                        media_element = f'<video src="{file_name}" autoplay loop muted playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>'
+                    else:
+                        media_element = f'<img src="{file_name}" alt="Nini\'s Paint Pour vase with flowers">'
+                    
+                    # Wrap in the exact CSS classes Trisha uses for vases 1-16
+                    new_html_blocks += f"""
+            <div class="product-card">
+                <div class="image-wrapper">
+                    {media_element}
+                </div>
+                <div class="product-info">
+                    <h3>New Showcase Vase</h3>
+                    <p>Beautiful fluid art piece featuring flowers.</p>
+                    <button class="modal-btn" onclick="alert('360-Degree Video View Coming Soon')">View 360° Experience</button>
+                </div>
+            </div>"""
             
             if new_html_blocks:
-                print("Adding new images to index.html...")
-                updated_html = html_content.replace("</body>", f"{new_html_blocks}\n</body>")
+                print("Adding new formatted media to index.html...")
+                updated_html = html_content.replace(
+                    "<!-- NEW_VASES_HERE -->", 
+                    f"{new_html_blocks}\n            <!-- NEW_VASES_HERE -->"
+                )
                 with open("index.html", "w", encoding="utf-8") as f:
                     f.write(updated_html)
                 print("Website HTML updated successfully!")
             else:
-                print("All images are already in the HTML. Nothing to update.")
+                print("All media is already in the HTML. Nothing to update.")
         else:
             print("Could not find index.html to update.")
 
