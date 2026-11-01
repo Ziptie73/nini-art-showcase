@@ -28,7 +28,11 @@ jobs:
         env:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python scripts/process_new_vases.py 
+        run: |
+          SCRIPT_PATH=$(find . -name "process_new_vases.py" | head -n 1)
+          echo "Executing script at: $SCRIPT_PATH"
+          python "$SCRIPT_PATH"
+         
         # (Leave your run command exactly as it currently is if different from above)
         
         
