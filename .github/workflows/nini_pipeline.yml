@@ -28,7 +28,7 @@ jobs:
         env:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python scripts/*/*vases* 
+        run: python scripts/process_new_vases.py 
         # (Leave your run command exactly as it currently is if different from above)
         
         
