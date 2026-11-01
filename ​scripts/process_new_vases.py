@@ -51,7 +51,7 @@ def main():
                 html_content = f.read()
             
             new_html_blocks = ""
-            item_counter = 17 # Starting from #NPC-017
+            item_counter = 1  # Starting from #NPC-001
             
             for item in items:
                 file_id = item['id']
@@ -91,7 +91,7 @@ def main():
                             Do not include markdown formatting or backticks.
                             """
                             response = ai_client.models.generate_content(
-                                model='gemini-2.5-flash',
+                                model='gemini-3.8-flash',
                                 contents=[prompt, img]
                             )
                             # Clean and parse the JSON response
