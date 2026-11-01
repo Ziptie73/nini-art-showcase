@@ -5,11 +5,11 @@ import tempfile
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
-import google.generativeai as genai
+from google import genai
 import PIL.Image
 
 def main():
-    print("Starting Nini's Paint Pour Creations sync with AI Vision...")
+    print("Starting Nini's Paint Pour Creations sync with modern AI Vision...")
     
     # 1. Authenticate Google Drive
     sa_key_json = os.environ.get("GCP_SA_KEY")
@@ -23,12 +23,10 @@ def main():
     # 2. Authenticate Gemini AI
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
-        genai.configure(api_key=gemini_key)
-        # Using Flash for fast, cost-free vision processing
-        ai_model = genai.GenerativeModel('gemini-1.5-flash')
+        ai_client = genai.Client(api_key=gemini_key)
         print("Gemini AI Vision initialized successfully!")
     else:
-        ai_model = None
+        ai_client = None
         print("WARNING: GEMINI_API_KEY not found. Falling back to generic text.")
 
     try:
@@ -53,8 +51,7 @@ def main():
                 html_content = f.read()
             
             new_html_blocks = ""
-            # Counter for new items, you could persist this in a separate file if needed across runs
-            item_counter = 17 # Starting from #NPC-017 for new items, adjust as needed based on current inventory
+            item_counter = 17 # Starting from #NPC-017
             
             for item in items:
                 file_id = item['id']
@@ -65,7 +62,8 @@ def main():
                 if file_name not in html_content:
                     sku = f"#NPC-{item_counter:03}"
                     item_counter += 1
-                    # Download the file first
+                    
+                    # Download the file
                     if not os.path.exists(file_name):
                         print(f"Downloading {file_name}...")
                         request = service.files().get_media(fileId=file_id)
@@ -81,7 +79,7 @@ def main():
                     is_video = 'video' in mime_type or file_name.lower().endswith(('.mp4', '.mov', '.webm'))
 
                     # Run AI Vision Analysis if it's a photo
-                    if ai_model and not is_video:
+                    if ai_client and not is_video:
                         try:
                             print(f"Analyzing {file_name} with Gemini AI...")
                             img = PIL.Image.open(file_name)
@@ -92,7 +90,10 @@ def main():
                             'description' (a poetic, single-sentence description of the colors, fluid motion, and style matching a country-luxe art gallery). 
                             Do not include markdown formatting or backticks.
                             """
-                            response = ai_model.generate_content([prompt, img])
+                            response = ai_client.models.generate_content(
+                                model='gemini-2.5-flash',
+                                contents=[prompt, img]
+                            )
                             # Clean and parse the JSON response
                             clean_json = response.text.strip().removeprefix('```json').removesuffix('```').strip()
                             data = json.loads(clean_json)
