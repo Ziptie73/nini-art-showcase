@@ -53,6 +53,9 @@ def main():
                 html_content = f.read()
             
             new_html_blocks = ""
+            # Counter for new items, you could persist this in a separate file if needed across runs
+            item_counter = 17 # Starting from #NPC-017 for new items, adjust as needed based on current inventory
+            
             for item in items:
                 file_id = item['id']
                 file_name = item['name'].replace(" ", "_").strip()
@@ -60,6 +63,8 @@ def main():
                 
                 # Check if it needs to be processed
                 if file_name not in html_content:
+                    sku = f"#NPC-{item_counter:03}"
+                    item_counter += 1
                     # Download the file first
                     if not os.path.exists(file_name):
                         print(f"Downloading {file_name}...")
@@ -103,8 +108,10 @@ def main():
                         media_element = f'<img src="{file_name}" alt="Nini\'s Paint Pour vase with flowers">'
                     
                     new_html_blocks += f"""
+            <!-- Item {sku} -->
             <div class="product-card">
                 <div class="image-wrapper">
+                    <span class="sku-badge">{sku}</span>
                     {media_element}
                 </div>
                 <div class="product-info">
