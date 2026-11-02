@@ -9,11 +9,10 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from google import genai
 import PIL.Image
-from PIL import ImageDraw, ImageFont
 from rembg import remove
 
 def main():
-    print("Starting Nini's Paint Pour sync with Template Compositing and Retry Loop...")
+    print("Starting Nini's Paint Pour sync with AI Smart Cropping...")
     
     sa_key_json = os.environ.get("GCP_SA_KEY")
     if not sa_key_json:
@@ -72,24 +71,28 @@ def main():
                             status, done = downloader.next_chunk()
 
                     card_title = "New Showcase Vase"
-                    card_desc = "Beautiful fluid art piece featuring flowers."
+                    card_desc = "Beautiful fluid art piece."
                     is_video = 'video' in mime_type or file_name.lower().endswith(('.mp4', '.mov', '.webm'))
 
                     if ai_client and not is_video:
                         try:
                             img = PIL.Image.open(file_name)
                             
-                            # Text Analysis with Retry Loop
+                            # AI Analysis & Smart Cropping
                             prompt = """
                             Analyze this Nini's Paint Pour Creations fluid art vase in the original photo. 
-                            First, estimate the approximate height of the vase in inches by comparing it to the standard spray paint can next to it.
-                            Then, return ONLY a valid JSON object with two keys: 
-                            'title' (a short, descriptive title) 
-                            'description' (a poetic, single-sentence description of the colors and fluid motion matching a country-luxe art gallery, seamlessly including its approximate estimated height, such as 'Standing roughly 8 inches tall, this...'). 
-                            Do not include markdown formatting or backticks.
+                            1. Estimate the height of the vase in inches by comparing it to the standard spray paint can next to it.
+                            2. Define a bounding box around ONLY the vase (excluding the spray can entirely).
+                            Return ONLY a valid JSON object with three keys: 
+                            'title' (a short title),
+                            'description' (a poetic description matching a country-luxe art gallery, seamlessly including its estimated height and mentioning elegant garden flowers),
+                            'crop_box' (an array of 4 floats between 0.0 and 1.0 representing [left, top, right, bottom] percentages to tightly crop the vase).
+                            Do not include markdown formatting.
                             """
                             
                             max_retries = 3
+                            crop_box = [0.0, 0.0, 1.0, 1.0] # Default to full image if missing
+                            
                             for attempt in range(max_retries):
                                 try:
                                     response = ai_client.models.generate_content(
@@ -100,14 +103,13 @@ def main():
                                     data = json.loads(clean_json)
                                     card_title = data.get('title', card_title)
                                     card_desc = data.get('description', card_desc)
+                                    crop_box = data.get('crop_box', crop_box)
                                     break
                                 except Exception as api_e:
                                     print(f"Gemini API attempt {attempt + 1} failed: {api_e}")
                                     if attempt < max_retries - 1:
-                                        print("Waiting 10 seconds before retrying...")
                                         time.sleep(10)
                                     else:
-                                        print("Max retries reached. Aborting AI processing for this item.")
                                         raise api_e
 
                             # Background Compositing
@@ -124,8 +126,20 @@ def main():
                             
                             bg_img = bg_img.resize((1080, 1350))
 
+                            # Apply AI Crop to remove spray can
+                            width, height = img.size
+                            left = int(width * crop_box[0])
+                            top = int(height * crop_box[1])
+                            right = int(width * crop_box[2])
+                            bottom = int(height * crop_box[3])
+                            
+                            if right > left and bottom > top:
+                                img_cropped = img.crop((left, top, right, bottom))
+                            else:
+                                img_cropped = img
+
                             # Extract and scale vase to exactly 35% of frame
-                            vase_only = remove(img).convert("RGBA")
+                            vase_only = remove(img_cropped).convert("RGBA")
                             target_height = int(bg_img.height * 0.35)
                             aspect_ratio = vase_only.width / vase_only.height
                             target_width = int(target_height * aspect_ratio)
@@ -138,14 +152,6 @@ def main():
                             final_img = PIL.Image.new("RGBA", bg_img.size)
                             final_img = PIL.Image.alpha_composite(bg_img, final_img)
                             final_img.paste(vase_resized, (paste_x, paste_y), vase_resized)
-                            
-                            # Draw SKU ID Card next to vase
-                            draw = ImageDraw.Draw(final_img)
-                            card_w, card_h = 120, 50
-                            card_x, card_y = paste_x + target_width + 10, paste_y + target_height - card_h - 10
-                            draw.rectangle([card_x, card_y, card_x + card_w, card_y + card_h], fill=(255, 253, 240, 255), outline=(200, 190, 170, 255), width=2)
-                            font = ImageFont.load_default()
-                            draw.text((card_x + 15, card_y + 15), sku, fill=(50, 50, 50, 255), font=font)
                             
                             final_img.convert("RGB").save(processed_image_name)
 
