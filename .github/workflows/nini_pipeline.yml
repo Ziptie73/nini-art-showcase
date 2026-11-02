@@ -22,7 +22,7 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib google-genai pillow rembg
+          pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib google-genai pillow "rembg[cpu]"
 
       - name: Run Pipeline Script
         env:
