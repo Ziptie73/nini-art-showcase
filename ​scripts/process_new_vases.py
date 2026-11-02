@@ -50,7 +50,7 @@ def main():
                 html_content = f.read()
             
             new_html_blocks = ""
-            item_counter = 17 
+            item_counter = 1 
             
             for item in items:
                 file_id = item['id']
