@@ -8,10 +8,11 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from google import genai
 import PIL.Image
+from PIL import ImageDraw, ImageFont
 from rembg import remove
 
 def main():
-    print("Starting Nini's Paint Pour sync with Authentic Extraction & Compositing...")
+    print("Starting Nini's Paint Pour sync with Template Compositing...")
     
     sa_key_json = os.environ.get("GCP_SA_KEY")
     if not sa_key_json:
@@ -24,7 +25,7 @@ def main():
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
         ai_client = genai.Client(api_key=gemini_key)
-        print("Gemini AI initialized successfully!")
+        print("Gemini AI initialized for text analysis!")
     else:
         ai_client = None
 
@@ -77,11 +78,13 @@ def main():
                         try:
                             img = PIL.Image.open(file_name)
                             
+                            # Text Analysis
                             prompt = """
-                            Analyze this Nini's Paint Pour Creations fluid art vase. 
-                            Return ONLY a valid JSON object with two keys: 
+                            Analyze this Nini's Paint Pour Creations fluid art vase in the original photo. 
+                            First, estimate the approximate height of the vase in inches by comparing it to the standard spray paint can next to it.
+                            Then, return ONLY a valid JSON object with two keys: 
                             'title' (a short, descriptive title) 
-                            'description' (a poetic, single-sentence description of the colors and fluid motion matching a country-luxe art gallery). 
+                            'description' (a poetic, single-sentence description of the colors and fluid motion matching a country-luxe art gallery, seamlessly including its approximate estimated height, such as 'Standing roughly 8 inches tall, this...'). 
                             Do not include markdown formatting or backticks.
                             """
                             response = ai_client.models.generate_content(
@@ -93,48 +96,42 @@ def main():
                             card_title = data.get('title', card_title)
                             card_desc = data.get('description', card_desc)
 
-                            # 5 Variations of the signature scene
-                            scale_objects = ["a pair of sunglasses", "a small hardcover book", "a decorative candle", "reading glasses", "a set of keys"]
-                            patio_variations = [
-                                "golden hour lighting from the left",
-                                "soft overcast afternoon lighting",
-                                "dappled sunlight filtering through tree leaves",
-                                "warm sunset glow from the right",
-                                "bright, clear midday sunlight"
-                            ]
+                            # Background Compositing
+                            bg_folder = "backgrounds"
+                            bg_img = None
+                            if os.path.exists(bg_folder):
+                                bgs = [f for f in os.listdir(bg_folder) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+                                if bgs:
+                                    bg_path = os.path.join(bg_folder, random.choice(bgs))
+                                    bg_img = PIL.Image.open(bg_path).convert("RGBA")
                             
-                            random_object = random.choice(scale_objects)
-                            random_lighting = random.choice(patio_variations)
+                            if bg_img is None:
+                                bg_img = PIL.Image.new("RGBA", (1080, 1350), (244, 243, 239, 255))
+                            
+                            bg_img = bg_img.resize((1080, 1350))
 
-                            bg_prompt = f"""
-                            Generate a high-quality background image of a weathered, rustic outdoor natural wood table. {random_lighting}. 
-                            In the background, there MUST be a natural stone waterfall, a large stone fireplace (no active fire), and an outdoor seating area with neutral cushions on a natural stone patio. 
-                            On the table, place a small folded paper ID card showing '{sku}', {random_object}, and a compact arrangement of natural foliage and flowers sitting directly on the wood. 
-                            Leave the center of the table entirely empty. Do not generate a vase.
-                            """
-                            
-                            bg_response = ai_client.models.generate_images(
-                                model='imagen-3.0-generate-002',
-                                prompt=bg_prompt,
-                                config=dict(number_of_images=1, aspect_ratio="4:5")
-                            )
-                            
-                            bg_img = PIL.Image.open(io.BytesIO(bg_response.generated_images[0].image.image_bytes)).convert("RGBA")
-                            
-                            # Extract authentic vase and scale to exact 6-9 inch proportion (35% of frame)
+                            # Extract and scale vase to exactly 35% of frame
                             vase_only = remove(img).convert("RGBA")
                             target_height = int(bg_img.height * 0.35)
                             aspect_ratio = vase_only.width / vase_only.height
                             target_width = int(target_height * aspect_ratio)
                             vase_resized = vase_only.resize((target_width, target_height), PIL.Image.Resampling.LANCZOS)
                             
-                            # Composite together
+                            # Paste vase onto background
                             paste_x = (bg_img.width - target_width) // 2
                             paste_y = bg_img.height - target_height - int(bg_img.height * 0.15)
                             
                             final_img = PIL.Image.new("RGBA", bg_img.size)
                             final_img = PIL.Image.alpha_composite(bg_img, final_img)
                             final_img.paste(vase_resized, (paste_x, paste_y), vase_resized)
+                            
+                            # Draw SKU ID Card next to vase
+                            draw = ImageDraw.Draw(final_img)
+                            card_w, card_h = 120, 50
+                            card_x, card_y = paste_x + target_width + 10, paste_y + target_height - card_h - 10
+                            draw.rectangle([card_x, card_y, card_x + card_w, card_y + card_h], fill=(255, 253, 240, 255), outline=(200, 190, 170, 255), width=2)
+                            font = ImageFont.load_default()
+                            draw.text((card_x + 15, card_y + 15), sku, fill=(50, 50, 50, 255), font=font)
                             
                             final_img.convert("RGB").save(processed_image_name)
 
