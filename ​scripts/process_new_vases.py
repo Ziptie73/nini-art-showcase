@@ -2,16 +2,17 @@ import os
 import io
 import json
 import tempfile
+import random
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from google import genai
 import PIL.Image
+from rembg import remove
 
 def main():
-    print("Starting Nini's Paint Pour Creations sync with modern AI Vision...")
+    print("Starting Nini's Paint Pour sync with Authentic Extraction & Compositing...")
     
-    # 1. Authenticate Google Drive
     sa_key_json = os.environ.get("GCP_SA_KEY")
     if not sa_key_json:
         raise ValueError("GCP_SA_KEY environment variable not found!")
@@ -20,14 +21,12 @@ def main():
         temp_key.write(sa_key_json)
         temp_key_path = temp_key.name
 
-    # 2. Authenticate Gemini AI
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
         ai_client = genai.Client(api_key=gemini_key)
-        print("Gemini AI Vision initialized successfully!")
+        print("Gemini AI initialized successfully!")
     else:
         ai_client = None
-        print("WARNING: GEMINI_API_KEY not found. Falling back to generic text.")
 
     try:
         creds = service_account.Credentials.from_service_account_file(
@@ -43,7 +42,6 @@ def main():
         
         items = results.get('files', [])
         if not items:
-            print("No media found in Drive.")
             return
 
         if os.path.exists("index.html"):
@@ -51,21 +49,19 @@ def main():
                 html_content = f.read()
             
             new_html_blocks = ""
-            item_counter = 1  # Starting from #NPC-001
+            item_counter = 17 
             
             for item in items:
                 file_id = item['id']
                 file_name = item['name'].replace(" ", "_").strip()
+                processed_image_name = f"processed_{file_name}"
                 mime_type = item.get('mimeType', '')
                 
-                # Check if it needs to be processed
-                if file_name not in html_content:
+                if file_name not in html_content and processed_image_name not in html_content:
                     sku = f"#NPC-{item_counter:03}"
                     item_counter += 1
                     
-                    # Download the file
                     if not os.path.exists(file_name):
-                        print(f"Downloading {file_name}...")
                         request = service.files().get_media(fileId=file_id)
                         fh = io.FileIO(file_name, 'wb')
                         downloader = MediaIoBaseDownload(fh, request)
@@ -73,40 +69,80 @@ def main():
                         while done is False:
                             status, done = downloader.next_chunk()
 
-                    # Default fallback text
                     card_title = "New Showcase Vase"
                     card_desc = "Beautiful fluid art piece featuring flowers."
                     is_video = 'video' in mime_type or file_name.lower().endswith(('.mp4', '.mov', '.webm'))
 
-                    # Run AI Vision Analysis if it's a photo
                     if ai_client and not is_video:
                         try:
-                            print(f"Analyzing {file_name} with Gemini AI...")
                             img = PIL.Image.open(file_name)
+                            
                             prompt = """
                             Analyze this Nini's Paint Pour Creations fluid art vase. 
                             Return ONLY a valid JSON object with two keys: 
-                            'title' (a short, descriptive title like 'Midnight Blue Swirl Vase') 
-                            'description' (a poetic, single-sentence description of the colors, fluid motion, and style matching a country-luxe art gallery). 
+                            'title' (a short, descriptive title) 
+                            'description' (a poetic, single-sentence description of the colors and fluid motion matching a country-luxe art gallery). 
                             Do not include markdown formatting or backticks.
                             """
                             response = ai_client.models.generate_content(
                                 model='gemini-3.8-flash',
                                 contents=[prompt, img]
                             )
-                            # Clean and parse the JSON response
                             clean_json = response.text.strip().removeprefix('```json').removesuffix('```').strip()
                             data = json.loads(clean_json)
                             card_title = data.get('title', card_title)
                             card_desc = data.get('description', card_desc)
-                        except Exception as e:
-                            print(f"AI Analysis failed for {file_name}: {e}")
 
-                    # Generate HTML element
-                    if is_video:
-                        media_element = f'<video src="{file_name}" autoplay loop muted playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>'
-                    else:
-                        media_element = f'<img src="{file_name}" alt="Nini\'s Paint Pour vase with flowers">'
+                            # 5 Variations of the signature scene
+                            scale_objects = ["a pair of sunglasses", "a small hardcover book", "a decorative candle", "reading glasses", "a set of keys"]
+                            patio_variations = [
+                                "golden hour lighting from the left",
+                                "soft overcast afternoon lighting",
+                                "dappled sunlight filtering through tree leaves",
+                                "warm sunset glow from the right",
+                                "bright, clear midday sunlight"
+                            ]
+                            
+                            random_object = random.choice(scale_objects)
+                            random_lighting = random.choice(patio_variations)
+
+                            bg_prompt = f"""
+                            Generate a high-quality background image of a weathered, rustic outdoor natural wood table. {random_lighting}. 
+                            In the background, there MUST be a natural stone waterfall, a large stone fireplace (no active fire), and an outdoor seating area with neutral cushions on a natural stone patio. 
+                            On the table, place a small folded paper ID card showing '{sku}', {random_object}, and a compact arrangement of natural foliage and flowers sitting directly on the wood. 
+                            Leave the center of the table entirely empty. Do not generate a vase.
+                            """
+                            
+                            bg_response = ai_client.models.generate_images(
+                                model='imagen-3.0-generate-002',
+                                prompt=bg_prompt,
+                                config=dict(number_of_images=1, aspect_ratio="4:5")
+                            )
+                            
+                            bg_img = PIL.Image.open(io.BytesIO(bg_response.generated_images[0].image.image_bytes)).convert("RGBA")
+                            
+                            # Extract authentic vase and scale to exact 6-9 inch proportion (35% of frame)
+                            vase_only = remove(img).convert("RGBA")
+                            target_height = int(bg_img.height * 0.35)
+                            aspect_ratio = vase_only.width / vase_only.height
+                            target_width = int(target_height * aspect_ratio)
+                            vase_resized = vase_only.resize((target_width, target_height), PIL.Image.Resampling.LANCZOS)
+                            
+                            # Composite together
+                            paste_x = (bg_img.width - target_width) // 2
+                            paste_y = bg_img.height - target_height - int(bg_img.height * 0.15)
+                            
+                            final_img = PIL.Image.new("RGBA", bg_img.size)
+                            final_img = PIL.Image.alpha_composite(bg_img, final_img)
+                            final_img.paste(vase_resized, (paste_x, paste_y), vase_resized)
+                            
+                            final_img.convert("RGB").save(processed_image_name)
+
+                        except Exception as e:
+                            print(f"Extraction or Generation failed for {file_name}: {e}")
+                            processed_image_name = file_name 
+
+                    media_element = f'<video src="{file_name}" autoplay loop muted playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>' if is_video else f'<img src="{processed_image_name}" alt="Nini\'s Paint Pour vase">'
                     
                     new_html_blocks += f"""
             <!-- Item {sku} -->
@@ -123,20 +159,12 @@ def main():
             </div>"""
             
             if new_html_blocks:
-                print("Injecting AI-curated HTML into index.html...")
                 updated_html = html_content.replace(
                     "<!-- NEW_VASES_HERE -->", 
                     f"{new_html_blocks}\n            <!-- NEW_VASES_HERE -->"
                 )
                 with open("index.html", "w", encoding="utf-8") as f:
                     f.write(updated_html)
-                print("Website HTML updated successfully!")
-            else:
-                print("All media is already in the HTML. Nothing to update.")
-        else:
-            print("Could not find index.html to update.")
-
-        print("Sync complete!")
 
     finally:
         if os.path.exists(temp_key_path):
