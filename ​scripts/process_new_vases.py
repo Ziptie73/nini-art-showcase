@@ -3,6 +3,7 @@ import io
 import json
 import tempfile
 import random
+import time
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
@@ -12,7 +13,7 @@ from PIL import ImageDraw, ImageFont
 from rembg import remove
 
 def main():
-    print("Starting Nini's Paint Pour sync with Template Compositing...")
+    print("Starting Nini's Paint Pour sync with Template Compositing and Retry Loop...")
     
     sa_key_json = os.environ.get("GCP_SA_KEY")
     if not sa_key_json:
@@ -78,7 +79,7 @@ def main():
                         try:
                             img = PIL.Image.open(file_name)
                             
-                            # Text Analysis
+                            # Text Analysis with Retry Loop
                             prompt = """
                             Analyze this Nini's Paint Pour Creations fluid art vase in the original photo. 
                             First, estimate the approximate height of the vase in inches by comparing it to the standard spray paint can next to it.
@@ -87,14 +88,27 @@ def main():
                             'description' (a poetic, single-sentence description of the colors and fluid motion matching a country-luxe art gallery, seamlessly including its approximate estimated height, such as 'Standing roughly 8 inches tall, this...'). 
                             Do not include markdown formatting or backticks.
                             """
-                            response = ai_client.models.generate_content(
-                                model='gemini-3.8-flash',
-                                contents=[prompt, img]
-                            )
-                            clean_json = response.text.strip().removeprefix('```json').removesuffix('```').strip()
-                            data = json.loads(clean_json)
-                            card_title = data.get('title', card_title)
-                            card_desc = data.get('description', card_desc)
+                            
+                            max_retries = 3
+                            for attempt in range(max_retries):
+                                try:
+                                    response = ai_client.models.generate_content(
+                                        model='gemini-3.8-flash',
+                                        contents=[prompt, img]
+                                    )
+                                    clean_json = response.text.strip().removeprefix('```json').removesuffix('```').strip()
+                                    data = json.loads(clean_json)
+                                    card_title = data.get('title', card_title)
+                                    card_desc = data.get('description', card_desc)
+                                    break
+                                except Exception as api_e:
+                                    print(f"Gemini API attempt {attempt + 1} failed: {api_e}")
+                                    if attempt < max_retries - 1:
+                                        print("Waiting 10 seconds before retrying...")
+                                        time.sleep(10)
+                                    else:
+                                        print("Max retries reached. Aborting AI processing for this item.")
+                                        raise api_e
 
                             # Background Compositing
                             bg_folder = "backgrounds"
